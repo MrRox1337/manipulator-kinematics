@@ -21,16 +21,26 @@ L2 = 5.0  # Link 2 length (horizontal)
 
 
 # Joint angles (change these to test different configurations)
-theta1 = np.radians(45)   # Base rotation (about z0)
-theta2 = np.radians(60)   # Second joint rotation (about z1)
+theta1 = 180   # Base rotation (about z0)
+theta2 = 120   # Second joint rotation (about z1)
 
 # Base position (origin)
 P0 = np.array([0, 0, 0, 1])  # x=0, y=0, z=0, 1
 
 # Simultaneous sweep: theta1 and theta2 change together
-num_frames = min(7, 19)  # 0-60 by 10 (7 steps), 0-180 by 10 (19 steps)
-theta1_sweep_deg = np.linspace(0, 60, num_frames)
-theta2_sweep_deg = np.linspace(0, 180, num_frames)
+# Define desired step sizes (in degrees) for each joint
+theta1_step_size = 10  # degrees
+theta2_step_size = 10  # degrees
+
+# Calculate number of steps needed for each joint
+theta1_num_steps = int(np.ceil(theta1 / theta1_step_size)) + 1
+theta2_num_steps = int(np.ceil(theta2 / theta2_step_size)) + 1
+
+# Use the maximum number of steps to dictate the framerate
+num_frames = max(theta1_num_steps, theta2_num_steps)
+
+theta1_sweep_deg = np.linspace(0, theta1, num_frames)
+theta2_sweep_deg = np.linspace(0, theta2, num_frames)
 theta1_sweep_rad = np.radians(theta1_sweep_deg)
 theta2_sweep_rad = np.radians(theta2_sweep_deg)
 

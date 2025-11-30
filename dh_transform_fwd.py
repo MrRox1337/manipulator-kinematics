@@ -1,9 +1,9 @@
-""" DH transformation for 2-DOF RR robot (two links) """
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.animation import FuncAnimation
 
+# --- 1. DH Transformation Function ---
 def dh_transform(a, alpha, d, theta):
     """Standard (Classic) DH transformation matrix."""
     ct, st = np.cos(theta), np.sin(theta)
@@ -15,164 +15,146 @@ def dh_transform(a, alpha, d, theta):
         [0,       0,      0,    1]
     ])
 
-# Robot parameters
-L1 = 3.0  # Link 1 length (vertical)
-L2 = 5.0  # Link 2 length (horizontal)
+# --- 2. Robot Parameters ---
+L1 = 3.0  # Vertical offset
+L2 = 5.0  # Link length
 
+# --- 3. Kinematics Functions ---
+def forward_kinematics(theta1, theta2):
+    T01 = dh_transform(a=0, alpha=np.pi/2, d=L1, theta=theta1)
+    T12 = dh_transform(a=L2, alpha=0, d=0, theta=theta2)
+    T02 = T01 @ T12
+    P0 = np.array([0, 0, 0, 1])
+    p_base = P0[:3]
+    p_joint2 = (T01 @ P0)[:3]
+    p_ee = (T02 @ P0)[:3]
+    return p_base, p_joint2, p_ee
 
-# Joint angles (change these to test different configurations)
-theta1 = 180   # Base rotation (about z0)
-theta2 = 120   # Second joint rotation (about z1)
+def inverse_kinematics(x, y, z):
+    # theta1 is the azimuth angle
+    theta1 = np.arctan2(y, x)
+    
+    # theta2 is the elevation angle
+    r_xy = np.sqrt(x**2 + y**2)
+    dz = z - L1
+    theta2 = np.arctan2(dz, r_xy)
+    
+    return theta1, theta2
 
-# Base position (origin)
-P0 = np.array([0, 0, 0, 1])  # x=0, y=0, z=0, 1
+def get_valid_z(x, y):
+    """Calculates z for a point on the reachability sphere."""
+    r_sq = x**2 + y**2
+    if r_sq > L2**2:
+        raise ValueError(f"Point ({x}, {y}) is out of reach.")
+    dz = np.sqrt(L2**2 - r_sq)
+    return L1 + dz
 
-# Simultaneous sweep: theta1 and theta2 change together
-# Define desired step sizes (in degrees) for each joint
-theta1_step_size = 10  # degrees
-theta2_step_size = 10  # degrees
+# --- 4. Define Targets ---
+home_pos = (5.0, 0.0, 3.0) 
 
-# Calculate number of steps needed for each joint
-theta1_num_steps = int(np.ceil(theta1 / theta1_step_size)) + 1
-theta2_num_steps = int(np.ceil(theta2 / theta2_step_size)) + 1
+# Calculate valid 3D coordinates for A, B, C
+target_A = (3.0, 3.0, get_valid_z(3.0, 3.0))
+target_B = (4.0, -2.0, get_valid_z(4.0, -2.0))
+target_C = (0.0, 4.5, get_valid_z(0.0, 4.5))
 
-# Use the maximum number of steps to dictate the framerate
-num_frames = max(theta1_num_steps, theta2_num_steps)
+targets = {
+    'Home': home_pos,
+    'A': target_A,
+    'B': target_B,
+    'C': target_C
+}
 
-theta1_sweep_deg = np.linspace(0, theta1, num_frames)
-theta2_sweep_deg = np.linspace(0, theta2, num_frames)
-theta1_sweep_rad = np.radians(theta1_sweep_deg)
-theta2_sweep_rad = np.radians(theta2_sweep_deg)
+sequence_names = ['Home', 'A', 'Home', 'B', 'Home', 'C', 'Home']
+sequence_coords = [targets[name] for name in sequence_names]
 
-theta_pairs = list(zip(theta1_sweep_rad, theta2_sweep_rad))
+# --- 5. Generate Trajectory ---
+full_traj_th1 = []
+full_traj_th2 = []
+steps_per_segment = 40
 
-# Precompute joint and end-effector positions for all pairs
-joint2_path = []
-end_effector_path = []
-for t1, t2 in theta_pairs:
-    T01_sweep = dh_transform(a=0, alpha=np.pi/2, d=L1, theta=t1)
-    T12_sweep = dh_transform(a=L2, alpha=0, d=0, theta=t2)
-    T02_sweep = T01_sweep @ T12_sweep
-    P1_homogeneous_sweep = T01_sweep @ P0
-    P2_homogeneous_sweep = T02_sweep @ P0
-    joint2_path.append(P1_homogeneous_sweep[:3])
-    end_effector_path.append(P2_homogeneous_sweep[:3])
-joint2_path = np.array(joint2_path)
-end_effector_path = np.array(end_effector_path)
+for i in range(len(sequence_coords) - 1):
+    start_pt = sequence_coords[i]
+    end_pt = sequence_coords[i+1]
+    
+    # Get Joint Angles
+    th1_start, th2_start = inverse_kinematics(*start_pt)
+    th1_end, th2_end = inverse_kinematics(*end_pt)
+    
+    # Interpolate
+    # We remove the last point of each segment to avoid duplication,
+    # except for the very final segment of the whole path.
+    if i == len(sequence_coords) - 2:
+        steps = steps_per_segment + 1 
+    else:
+        steps = steps_per_segment
+        
+    t = np.linspace(0, 1, steps_per_segment+1)
+    if i < len(sequence_coords) - 2:
+        t = t[:-1] 
+        
+    seg_th1 = th1_start + (th1_end - th1_start) * t
+    seg_th2 = th2_start + (th2_end - th2_start) * t
+    
+    full_traj_th1.extend(seg_th1)
+    full_traj_th2.extend(seg_th2)
 
-
-# Link 1 transformation: Base to Joint 2
-T01 = dh_transform(a=0, alpha=np.pi/2, d=L1, theta=theta1)
-print("Transformation T01 (Base to Joint 2):")
-print(T01)
-print()
-
-# Position of Joint 2
-P1_homogeneous = T01 @ P0
-P1 = P1_homogeneous[:3]
-print(f"Joint 2 position: ({P1[0]:.4f}, {P1[1]:.4f}, {P1[2]:.4f})")
-print()
-
-# Link 2 transformation: Joint 2 to End-effector
-T12 = dh_transform(a=L2, alpha=0, d=0, theta=theta2)
-print("Transformation T12 (Joint 2 to End-effector):")
-print(T12)
-print()
-
-# Total transformation: Base to End-effector
-T02 = T01 @ T12
-print("Total Transformation T02 (Base to End-effector):")
-print(T02)
-print()
-
-# Position of End-effector
-P2_homogeneous = T02 @ P0
-P2 = P2_homogeneous[:3]
-print(f"End-effector position: ({P2[0]:.4f}, {P2[1]:.4f}, {P2[2]:.4f})")
-print()
-
-# ============================================================================
-# 3D VISUALIZATION
-# ============================================================================
-
-
-fig = plt.figure(figsize=(12, 10))
+# --- 6. Animation ---
+fig = plt.figure(figsize=(10, 8))
 ax = fig.add_subplot(111, projection='3d')
 
-# Animation setup
-base = np.array([0, 0, 0])
-link1_line, = ax.plot([], [], [], 'b-', linewidth=6, label=f'Link 1 (L={L1})')
-link2_line, = ax.plot([], [], [], 'g-', linewidth=6, label=f'Link 2 (L={L2})')
-ee_path_line, = ax.plot([], [], [], 'm--', linewidth=2, label='End-effector Path (θ2 sweep)')
-joint1_scatter = ax.scatter([], [], [], color='red', s=200, marker='o', label='Base (Joint 1)', edgecolors='black', linewidths=2, zorder=5)
-joint2_scatter = ax.scatter([], [], [], color='orange', s=200, marker='o', label='Joint 2', edgecolors='black', linewidths=2, zorder=5)
-ee_scatter = ax.scatter([], [], [], color='purple', s=200, marker='s', label='End-effector', edgecolors='black', linewidths=2, zorder=5)
+line_link1, = ax.plot([], [], [], 'b-', linewidth=5, label='Link 1')
+line_link2, = ax.plot([], [], [], 'g-', linewidth=5, label='Link 2')
+pt_joints = ax.scatter([], [], [], c='k', s=100)
+line_trace, = ax.plot([], [], [], 'm--', linewidth=1, alpha=0.5)
+
+# Show Targets
+colors = {'Home': 'k', 'A': 'r', 'B': 'orange', 'C': 'purple'}
+for name, pos in targets.items():
+    ax.scatter([pos[0]], [pos[1]], [pos[2]], c=colors[name], s=100, marker='X', label=name)
+
+trace_x, trace_y, trace_z = [], [], []
 
 def init():
-    link1_line.set_data([], [])
-    link1_line.set_3d_properties([])
-    link2_line.set_data([], [])
-    link2_line.set_3d_properties([])
-    ee_path_line.set_data([], [])
-    ee_path_line.set_3d_properties([])
-    return link1_line, link2_line, ee_path_line, joint1_scatter, joint2_scatter, ee_scatter
+    line_link1.set_data([], [])
+    line_link1.set_3d_properties([])
+    line_link2.set_data([], [])
+    line_link2.set_3d_properties([])
+    pt_joints._offsets3d = ([], [], [])
+    return line_link1, line_link2, pt_joints, line_trace
 
 def animate(i):
-    joint2 = joint2_path[i]
-    end_effector = end_effector_path[i]
-    link1_line.set_data([base[0], joint2[0]], [base[1], joint2[1]])
-    link1_line.set_3d_properties([base[2], joint2[2]])
-    link2_line.set_data([joint2[0], end_effector[0]], [joint2[1], end_effector[1]])
-    link2_line.set_3d_properties([joint2[2], end_effector[2]])
-    ee_path_line.set_data(end_effector_path[:i+1,0], end_effector_path[:i+1,1])
-    ee_path_line.set_3d_properties(end_effector_path[:i+1,2])
-    joint1_scatter._offsets3d = ([base[0]], [base[1]], [base[2]])
-    joint2_scatter._offsets3d = ([joint2[0]], [joint2[1]], [joint2[2]])
-    ee_scatter._offsets3d = ([end_effector[0]], [end_effector[1]], [end_effector[2]])
-    # Update title to show current theta1 and theta2
-    t1_deg = np.degrees(theta_pairs[i][0])
-    t2_deg = np.degrees(theta_pairs[i][1])
-    ax.set_title(f'2-DOF RR Robot\nθ1={t1_deg:.1f}°, θ2={t2_deg:.1f}°', fontsize=14, fontweight='bold')
-    return link1_line, link2_line, ee_path_line, joint1_scatter, joint2_scatter, ee_scatter
+    t1 = full_traj_th1[i]
+    t2 = full_traj_th2[i]
+    p0, p1, p2 = forward_kinematics(t1, t2)
+    
+    line_link1.set_data([p0[0], p1[0]], [p0[1], p1[1]])
+    line_link1.set_3d_properties([p0[2], p1[2]])
+    line_link2.set_data([p1[0], p2[0]], [p1[1], p2[1]])
+    line_link2.set_3d_properties([p1[2], p2[2]])
+    
+    pt_joints._offsets3d = ([p0[0], p1[0], p2[0]], [p0[1], p1[1], p2[1]], [p0[2], p1[2], p2[2]])
+    
+    trace_x.append(p2[0])
+    trace_y.append(p2[1])
+    trace_z.append(p2[2])
+    line_trace.set_data(trace_x, trace_y)
+    line_trace.set_3d_properties(trace_z)
+    
+    # Identify segment for title
+    segment_idx = min(int(i / steps_per_segment), len(sequence_names)-2)
+    curr_t = sequence_names[segment_idx]
+    next_t = sequence_names[segment_idx+1]
+    ax.set_title(f"Moving: {curr_t} -> {next_t}")
+    
+    return line_link1, line_link2, pt_joints, line_trace
 
-# Draw coordinate frame at base
-frame_scale = 1.5
-ax.quiver(0, 0, 0, frame_scale, 0, 0, color='red', arrow_length_ratio=0.3, linewidth=2, alpha=0.6)
-ax.quiver(0, 0, 0, 0, frame_scale, 0, color='green', arrow_length_ratio=0.3, linewidth=2, alpha=0.6)
-ax.quiver(0, 0, 0, 0, 0, frame_scale, color='blue', arrow_length_ratio=0.3, linewidth=2, alpha=0.6)
+ax.set_xlim(-6, 6)
+ax.set_ylim(-6, 6)
+ax.set_zlim(0, 8)
+ax.set_xlabel('X')
+ax.set_ylabel('Y')
+ax.set_zlabel('Z')
+ax.legend()
 
-# Labels and title
-ax.set_xlabel('X', fontsize=12, fontweight='bold')
-ax.set_ylabel('Y', fontsize=12, fontweight='bold')
-ax.set_zlabel('Z', fontsize=12, fontweight='bold')
-ax.set_title(f'2-DOF RR Robot\nθ1={np.degrees(theta1):.1f}°, θ2 sweep', fontsize=14, fontweight='bold')
-
-# Set equal aspect ratio for all points in sweep
-all_points = np.vstack((base, joint2_path, end_effector_path))
-max_range = np.array([np.ptp(all_points[:, 0]),
-                      np.ptp(all_points[:, 1]),
-                      np.ptp(all_points[:, 2])]).max() / 2.0
-max_range = max(max_range, 2.0) * 1.2
-mid_x = all_points[:, 0].mean()
-mid_y = all_points[:, 1].mean()
-mid_z = all_points[:, 2].mean()
-ax.set_xlim(mid_x - max_range, mid_x + max_range)
-ax.set_ylim(mid_y - max_range, mid_y + max_range)
-ax.set_zlim(mid_z - max_range, mid_z + max_range)
-ax.set_box_aspect([1, 1, 1])
-
-# Grid and legend
-ax.grid(True, alpha=0.3)
-ax.legend(loc='best', fontsize=10)
-
-# Add text box with info
-info_text = f'Robot Configuration:\nL1 = {L1}\nL2 = {L2}\nθ1 = 0° to 60°\nθ2 = 0° to 180°'
-ax.text2D(0.02, 0.98, info_text, transform=ax.transAxes, fontsize=10, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
-
-# Animate
-ani = FuncAnimation(fig, animate, frames=len(theta_pairs), init_func=init, blit=False, interval=200, repeat=True)
-
-plt.tight_layout()
+ani = FuncAnimation(fig, animate, frames=len(full_traj_th1), init_func=init, interval=30, blit=False)
 plt.show()
-
-print("*** Animation complete! ***")

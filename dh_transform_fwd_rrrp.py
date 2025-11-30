@@ -3,8 +3,9 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.animation import FuncAnimation
 
+# --- 1. DH Transformation Function ---
 def dh_transform(a, alpha, d, theta):
-    """Standard (Classic) DH transformation matrix."""
+    """Standard DH Matrix."""
     ct, st = np.cos(theta), np.sin(theta)
     ca, sa = np.cos(alpha), np.sin(alpha)
     return np.array([
@@ -14,137 +15,119 @@ def dh_transform(a, alpha, d, theta):
         [0,       0,      0,    1]
     ])
 
-# ==========================================
-# 1. ROBOT PARAMETERS (All Non-Zero)
-# ==========================================
-L1_height = 3.0   # d1: Vertical height of shoulder
-a1_offset = 1.5   # a1: Horizontal offset of shoulder from center
-a2_length = 4.0   # a2: Length of Upper Arm
-a3_length = 2.0   # a3: Length of Forearm Housing (Elbow to Prismatic Start)
+# --- 2. Robot Definition ---
+L_base_z = 2.0  
+L_base_x = 2.0  
+L_arm1 = 2.0    
+L_arm2 = 2.0    
 
-# ==========================================
-# 2. DEFINE MOVEMENT TRAJECTORY
-# ==========================================
-num_frames = 100
-
-# Start: Retracted, facing forward
-start_pose = np.array([0.0, 0.0, 0.0, 1.0]) 
-# End: Rotated, lifted, elbow bent, fully extended
-end_pose   = np.array([120.0, 45.0, -90.0, 4.0])
-
-# Interpolation
-theta1_vals = np.linspace(start_pose[0], end_pose[0], num_frames)
-theta2_vals = np.linspace(start_pose[1], end_pose[1], num_frames)
-theta3_vals = np.linspace(start_pose[2], end_pose[2], num_frames)
-d4_vals     = np.linspace(start_pose[3], end_pose[3], num_frames)
-
-# ==========================================
-# 3. CALCULATE KINEMATICS
-# ==========================================
-# Storage array to hold coordinates of P0, P1, P2, P3, P4 for every frame
-path_points = [] 
-
-P0_local = np.array([0, 0, 0, 1])
-
-for i in range(num_frames):
-    t1 = np.radians(theta1_vals[i])
-    t2 = np.radians(theta2_vals[i])
-    t3 = np.radians(theta3_vals[i])
-    d4 = d4_vals[i]
+def forward_kinematics_downward(q1_deg, q2_deg, q3_deg, d4_val):
+    """
+    FK with J3 aligned to World +Y, and J4 (Extension) aligned to World -Z.
+    """
+    t1, t2, t3 = np.radians([q1_deg, q2_deg, q3_deg])
     
-    # 1. Waist (Base -> Shoulder): a=a1, alpha=90, d=L1, theta=t1
-    T01 = dh_transform(a=a1_offset, alpha=np.pi/2, d=L1_height, theta=t1)
+    # Frame 1: Base Rotation (Z Up)
+    T01 = dh_transform(a=L_base_x, alpha=0, d=L_base_z, theta=t1)
     
-    # 2. Shoulder (Shoulder -> Elbow): a=a2, alpha=0, d=0, theta=t2
-    T12 = dh_transform(a=a2_length, alpha=0, d=0, theta=t2)
+    # Frame 2: J2 (Shoulder)
+    # Z_prev (Up) -> Z_new (+Y). Rotate -90 about X.
+    T12 = dh_transform(a=L_arm1, alpha=-np.pi/2, d=0, theta=t2)
     
-    # 3. Elbow (Elbow -> Prismatic Housing): a=a3, alpha=90, d=0, theta=t3
-    T23 = dh_transform(a=a3_length, alpha=np.pi/2, d=0, theta=t3)
+    # Frame 3: J3 (Elbow)
+    # Z_prev (+Y) -> Z_new (-Z/Down). Rotate -90 about X.
+    T23 = dh_transform(a=L_arm2, alpha=-np.pi/2, d=0, theta=t3)
     
-    # 4. Prismatic (Housing -> Tip): a=0, alpha=0, d=d4, theta=0
-    T34 = dh_transform(a=0, alpha=0, d=d4, theta=0)
+    # Frame 4: Tip (Extension along Z, which is now World -Z)
+    T34 = dh_transform(a=0, alpha=0, d=d4_val, theta=0)
     
-    # Forward Kinematics
     T02 = T01 @ T12
     T03 = T02 @ T23
     T04 = T03 @ T34
     
-    # Extract coordinates (P0, P1, P2, P3, P4)
-    p0 = P0_local[:3]
-    p1 = (T01 @ P0_local)[:3]
-    p2 = (T02 @ P0_local)[:3]
-    p3 = (T03 @ P0_local)[:3]
-    p4 = (T04 @ P0_local)[:3]
-    
-    path_points.append([p0, p1, p2, p3, p4])
+    return [np.eye(4), T01, T02, T03, T04]
 
-path_points = np.array(path_points)
+# --- 3. Trajectory ---
+# Keyframes: [J1, J2, J3, d4]
+keyframes = [
+    [0, 0, 0, 0],       # Home
+    [45, 0, 0, 0],      # Turn Base
+    [45, 30, 0, 0],     # Turn Shoulder
+    [45, 30, 0, 1.5],   # Extend Down (Pick)
+    [45, 30, 0, 0],     # Retract
+    [90, 60, 0, 0],     # Move
+    [90, 60, -30, 0],    # Pitch J3
+    [90, 60, 0, 0],     # Level
+    [90, 60, 0, 1.5],   # Extend Down (Place)
+    [90, 60, 0, 0],     # Retract
+    [0, 0, 0, 0]        # Home
+]
 
-# ==========================================
-# 4. VISUALIZATION
-# ==========================================
-fig = plt.figure(figsize=(10, 10))
+full_traj = []
+steps_per_move = 15
+for i in range(len(keyframes)-1):
+    start = np.array(keyframes[i])
+    end = np.array(keyframes[i+1])
+    for alpha in np.linspace(0, 1, steps_per_move):
+        full_traj.append(start + (end - start) * alpha)
+full_traj = np.array(full_traj)
+
+# --- 4. Animation ---
+fig = plt.figure(figsize=(10, 8))
 ax = fig.add_subplot(111, projection='3d')
 
-# Initializing Links (4 lines)
-lines = [ax.plot([], [], [], lw=4)[0] for _ in range(4)]
-colors = ['k', 'b', 'g', 'm'] # Black, Blue, Green, Magenta
-labels = ['Link 1 (Waist)', 'Link 2 (Upper)', 'Link 3 (Housing)', 'Link 4 (Ext)']
+lines = [ax.plot([], [], [], lw=4, marker='o')[0] for _ in range(4)]
+quivers = []
 
-for line, color, label in zip(lines, colors, labels):
-    line.set_color(color)
-    line.set_label(label)
-
-# Initializing Trace Line (DOTTED line for path)
-trace_line, = ax.plot([], [], [], 'r:', linewidth=2, alpha=0.7, label='End-Effector Path')
-
-# Initializing Joints and Tip
-joints_scatter = ax.scatter([], [], [], c='orange', s=80, edgecolors='k', zorder=10)
-tip_scatter = ax.scatter([], [], [], c='red', marker='^', s=100, zorder=10, label='Tip')
+def draw_frame(ax, T, length=0.8):
+    origin = T[:3, 3]
+    R = T[:3, :3]
+    colors = ['r', 'g', 'b'] # X, Y, Z
+    qs = []
+    for i in range(3):
+        vec = R[:, i] * length
+        qs.append(ax.quiver(*origin, *vec, color=colors[i], lw=2))
+    return qs
 
 def init():
     for line in lines:
         line.set_data([], [])
         line.set_3d_properties([])
-    trace_line.set_data([], [])
-    trace_line.set_3d_properties([])
-    joints_scatter._offsets3d = ([], [], [])
-    tip_scatter._offsets3d = ([], [], [])
-    # Return all artists that need to be updated
-    return lines + [joints_scatter, tip_scatter, trace_line]
+    return lines
 
 def animate(i):
-    pts = path_points[i] # Current joint points (5, 3)
+    global quivers
+    for q_list in quivers:
+        for q in q_list:
+            q.remove()
+    quivers = []
     
-    # Update link segments (p0->p1, p1->p2, p2->p3, p3->p4)
-    for j, line in enumerate(lines):
-        line.set_data([pts[j,0], pts[j+1,0]], [pts[j,1], pts[j+1,1]])
-        line.set_3d_properties([pts[j,2], pts[j+1,2]])
+    q1, q2, q3, d4 = full_traj[i]
+    frames = forward_kinematics_downward(q1, q2, q3, d4)
+    coords = np.array([f[:3, 3] for f in frames])
+    
+    colors = ['k', 'b', 'orange', 'purple']
+    labels = ['Base', 'Link1', 'Link2', 'Link3']
+    
+    for j in range(4):
+        lines[j].set_data([coords[j,0], coords[j+1,0]], [coords[j,1], coords[j+1,1]])
+        lines[j].set_3d_properties([coords[j,2], coords[j+1,2]])
+        lines[j].set_color(colors[j])
+        lines[j].set_label(labels[j])
         
-    # Update end-effector path trace (P4 coordinates)
-    trace_line.set_data(path_points[:i+1, 4, 0], path_points[:i+1, 4, 1])
-    trace_line.set_3d_properties(path_points[:i+1, 4, 2])
+    for f in frames[1:]:
+        quivers.append(draw_frame(ax, f))
         
-    # Update joints (p0, p1, p2, p3)
-    joints_scatter._offsets3d = (pts[:-1, 0], pts[:-1, 1], pts[:-1, 2])
-    
-    # Update tip (p4)
-    tip_scatter._offsets3d = ([pts[-1, 0]], [pts[-1, 1]], [pts[-1, 2]])
-    
-    ax.set_title(f"RRRP Robot: Ext={d4_vals[i]:.2f} | Angles: {theta1_vals[i]:.0f}°, {theta2_vals[i]:.0f}°, {theta3_vals[i]:.0f}°")
-    # Return all artists that need to be updated
-    return lines + [joints_scatter, tip_scatter, trace_line]
+    ax.set_title(f"Downward Extension | Frame {i}")
+    return lines
 
-# Setup scene
-ax.set_xlim(-8, 8)
-ax.set_ylim(-8, 8)
-ax.set_zlim(0, 10)
+ax.set_xlim(-2, 6)
+ax.set_ylim(-2, 6)
+ax.set_zlim(0, 5)
 ax.set_xlabel('X')
 ax.set_ylabel('Y')
 ax.set_zlabel('Z')
-ax.legend(loc='upper right')
-ax.set_box_aspect([1, 1, 1])
+ax.legend(loc='upper left')
 
-# Create Animation
-ani = FuncAnimation(fig, animate, frames=num_frames, init_func=init, interval=50, blit=False)
+ani = FuncAnimation(fig, animate, frames=len(full_traj), init_func=init, interval=50, blit=False)
 plt.show()

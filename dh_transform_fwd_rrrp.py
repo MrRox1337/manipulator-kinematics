@@ -17,10 +17,10 @@ def dh_transform(a, alpha, d, theta):
 # ==========================================
 # 1. ROBOT PARAMETERS (All Non-Zero)
 # ==========================================
-L1_height = 3.0   # Vertical height of shoulder
-a1_offset = 1.5   # Horizontal offset of shoulder from center
-a2_length = 4.0   # Length of Upper Arm
-a3_length = 2.0   # Length of Forearm Housing (Elbow to Prismatic Start)
+L1_height = 3.0   # d1: Vertical height of shoulder
+a1_offset = 1.5   # a1: Horizontal offset of shoulder from center
+a2_length = 4.0   # a2: Length of Upper Arm
+a3_length = 2.0   # a3: Length of Forearm Housing (Elbow to Prismatic Start)
 
 # ==========================================
 # 2. DEFINE MOVEMENT TRAJECTORY
@@ -41,7 +41,8 @@ d4_vals     = np.linspace(start_pose[3], end_pose[3], num_frames)
 # ==========================================
 # 3. CALCULATE KINEMATICS
 # ==========================================
-path_points = [] # To store [p0, p1, p2, p3, p4] for every frame
+# Storage array to hold coordinates of P0, P1, P2, P3, P4 for every frame
+path_points = [] 
 
 P0_local = np.array([0, 0, 0, 1])
 
@@ -51,19 +52,16 @@ for i in range(num_frames):
     t3 = np.radians(theta3_vals[i])
     d4 = d4_vals[i]
     
-    # 1. Waist (Base -> Shoulder)
-    # Now includes a1_offset!
+    # 1. Waist (Base -> Shoulder): a=a1, alpha=90, d=L1, theta=t1
     T01 = dh_transform(a=a1_offset, alpha=np.pi/2, d=L1_height, theta=t1)
     
-    # 2. Shoulder (Shoulder -> Elbow)
+    # 2. Shoulder (Shoulder -> Elbow): a=a2, alpha=0, d=0, theta=t2
     T12 = dh_transform(a=a2_length, alpha=0, d=0, theta=t2)
     
-    # 3. Elbow (Elbow -> Prismatic Housing)
-    # Now includes a3_length!
+    # 3. Elbow (Elbow -> Prismatic Housing): a=a3, alpha=90, d=0, theta=t3
     T23 = dh_transform(a=a3_length, alpha=np.pi/2, d=0, theta=t3)
     
-    # 4. Prismatic (Housing -> Tip)
-    # d4 is the variable extension
+    # 4. Prismatic (Housing -> Tip): a=0, alpha=0, d=d4, theta=0
     T34 = dh_transform(a=0, alpha=0, d=d4, theta=0)
     
     # Forward Kinematics
@@ -71,7 +69,7 @@ for i in range(num_frames):
     T03 = T02 @ T23
     T04 = T03 @ T34
     
-    # Extract coordinates
+    # Extract coordinates (P0, P1, P2, P3, P4)
     p0 = P0_local[:3]
     p1 = (T01 @ P0_local)[:3]
     p2 = (T02 @ P0_local)[:3]
@@ -88,7 +86,7 @@ path_points = np.array(path_points)
 fig = plt.figure(figsize=(10, 10))
 ax = fig.add_subplot(111, projection='3d')
 
-# Initial lines
+# Initializing Links (4 lines)
 lines = [ax.plot([], [], [], lw=4)[0] for _ in range(4)]
 colors = ['k', 'b', 'g', 'm'] # Black, Blue, Green, Magenta
 labels = ['Link 1 (Waist)', 'Link 2 (Upper)', 'Link 3 (Housing)', 'Link 4 (Ext)']
@@ -97,6 +95,10 @@ for line, color, label in zip(lines, colors, labels):
     line.set_color(color)
     line.set_label(label)
 
+# Initializing Trace Line (DOTTED line for path)
+trace_line, = ax.plot([], [], [], 'r:', linewidth=2, alpha=0.7, label='End-Effector Path')
+
+# Initializing Joints and Tip
 joints_scatter = ax.scatter([], [], [], c='orange', s=80, edgecolors='k', zorder=10)
 tip_scatter = ax.scatter([], [], [], c='red', marker='^', s=100, zorder=10, label='Tip')
 
@@ -104,21 +106,24 @@ def init():
     for line in lines:
         line.set_data([], [])
         line.set_3d_properties([])
+    trace_line.set_data([], [])
+    trace_line.set_3d_properties([])
     joints_scatter._offsets3d = ([], [], [])
     tip_scatter._offsets3d = ([], [], [])
-    return lines + [joints_scatter, tip_scatter]
+    # Return all artists that need to be updated
+    return lines + [joints_scatter, tip_scatter, trace_line]
 
 def animate(i):
-    pts = path_points[i] # Shape (5, 3)
+    pts = path_points[i] # Current joint points (5, 3)
     
-    # Update segments
-    # Link 1: p0 -> p1
-    # Link 2: p1 -> p2
-    # Link 3: p2 -> p3
-    # Link 4: p3 -> p4
+    # Update link segments (p0->p1, p1->p2, p2->p3, p3->p4)
     for j, line in enumerate(lines):
         line.set_data([pts[j,0], pts[j+1,0]], [pts[j,1], pts[j+1,1]])
         line.set_3d_properties([pts[j,2], pts[j+1,2]])
+        
+    # Update end-effector path trace (P4 coordinates)
+    trace_line.set_data(path_points[:i+1, 4, 0], path_points[:i+1, 4, 1])
+    trace_line.set_3d_properties(path_points[:i+1, 4, 2])
         
     # Update joints (p0, p1, p2, p3)
     joints_scatter._offsets3d = (pts[:-1, 0], pts[:-1, 1], pts[:-1, 2])
@@ -126,18 +131,20 @@ def animate(i):
     # Update tip (p4)
     tip_scatter._offsets3d = ([pts[-1, 0]], [pts[-1, 1]], [pts[-1, 2]])
     
-    ax.set_title(f"Frame {i}: Ext={d4_vals[i]:.2f}")
-    return lines + [joints_scatter, tip_scatter]
+    ax.set_title(f"RRRP Robot: Ext={d4_vals[i]:.2f} | Angles: {theta1_vals[i]:.0f}°, {theta2_vals[i]:.0f}°, {theta3_vals[i]:.0f}°")
+    # Return all artists that need to be updated
+    return lines + [joints_scatter, tip_scatter, trace_line]
 
 # Setup scene
-ax.set_xlim(-6, 6)
-ax.set_ylim(-6, 6)
+ax.set_xlim(-8, 8)
+ax.set_ylim(-8, 8)
 ax.set_zlim(0, 10)
 ax.set_xlabel('X')
 ax.set_ylabel('Y')
 ax.set_zlabel('Z')
-ax.legend()
+ax.legend(loc='upper right')
 ax.set_box_aspect([1, 1, 1])
 
+# Create Animation
 ani = FuncAnimation(fig, animate, frames=num_frames, init_func=init, interval=50, blit=False)
 plt.show()

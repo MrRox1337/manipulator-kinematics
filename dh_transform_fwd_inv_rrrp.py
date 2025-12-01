@@ -64,8 +64,10 @@ def inverse_kinematics_numerical(target_pos, seed_q):
 
 targets = {
     'Home': np.array([5.0, 0.0, 0.0]), 
-    'A':    np.array([4.0, 2.0, 1.5]), 
-    'B':    np.array([3.0, -2.0, 2.5]),
+    # 'A':    np.array([4.0, 2.0, 1.5]), 
+    # 'B':    np.array([3.0, -2.0, 2.5]),
+    'A':    np.array([1.0, 3.0, 1.5]),
+    'B':    np.array([1.0, 3.0, 2.5]),
     'C':    np.array([1.0, 3.0, 3.5])   
 }
 
@@ -74,7 +76,7 @@ sequence = ['Home', 'A', 'Home', 'B', 'Home', 'C', 'Home']
 
 full_trajectory_q = []
 current_q = np.array([0.0, 0.0, 0.0, 2.0]) 
-steps_per_move = 40 # Slower for better visualization
+steps_per_move = 40 
 
 print("Generating Trajectory...")
 for i in range(len(sequence) - 1):
@@ -102,20 +104,46 @@ ax = fig.add_subplot(111, projection='3d')
 robot_lines = [ax.plot([], [], [], lw=4, marker='o', solid_capstyle='round')[0] for _ in range(4)]
 trace_line, = ax.plot([], [], [], 'k-', lw=1, alpha=0.3, label='Tip Path')
 
-# Box Visuals (3 separate markers)
-# Box 1: Red square
+# Box Visuals
 box1_plot, = ax.plot([], [], [], linestyle='None', marker='s', markersize=10, color='red', label='Box 1 (-> A)')
-# Box 2: Green square
 box2_plot, = ax.plot([], [], [], linestyle='None', marker='s', markersize=10, color='green', label='Box 2 (-> B)')
-# Box 3: Blue square
 box3_plot, = ax.plot([], [], [], linestyle='None', marker='s', markersize=10, color='blue', label='Box 3 (-> C)')
 
 link_colors = ['#333333', '#1f77b4', '#ff7f0e', '#9467bd']
 
-# Initialize Box Positions variables
-pos_b1 = targets['Home'].copy()
-pos_b2 = targets['Home'].copy()
-pos_b3 = targets['Home'].copy()
+# --- DRAW ENVIRONMENT ---
+def draw_plate(ax, center, size, color, label=None):
+    """Helper to draw a flat plate at a specific location"""
+    x_c, y_c, z_c = center
+    width, length = size
+    
+    # Corners
+    x = [x_c - width/2, x_c + width/2]
+    y = [y_c - length/2, y_c + length/2]
+    X, Y = np.meshgrid(x, y)
+    Z = np.full_like(X, z_c - 0.05) # Draw slightly below target Z so box sits on top
+    
+    surf = ax.plot_surface(X, Y, Z, color=color, alpha=0.5, shade=True)
+    
+    # Add legs for shelves to ground (visual candy)
+    if z_c > 0.1:
+        ax.plot([x_c - width/2, x_c - width/2], [y_c - length/2, y_c - length/2], [0, z_c], 'k-', lw=1, alpha=0.3)
+        ax.plot([x_c + width/2, x_c + width/2], [y_c - length/2, y_c - length/2], [0, z_c], 'k-', lw=1, alpha=0.3)
+        ax.plot([x_c - width/2, x_c - width/2], [y_c + length/2, y_c + length/2], [0, z_c], 'k-', lw=1, alpha=0.3)
+        ax.plot([x_c + width/2, x_c + width/2], [y_c + length/2, y_c + length/2], [0, z_c], 'k-', lw=1, alpha=0.3)
+    
+    if label:
+        ax.text(x_c, y_c, z_c, label, fontsize=9, fontweight='bold', ha='center')
+
+# Draw Table at Home
+draw_plate(ax, targets['Home'], (1.5, 1.5), 'peru', "Table")
+
+# Draw Shelves
+draw_plate(ax, targets['A'], (1.0, 1.0), 'lightgray', "Shelf A")
+draw_plate(ax, targets['B'], (1.0, 1.0), 'lightgray', "Shelf B")
+draw_plate(ax, targets['C'], (1.0, 1.0), 'lightgray', "Shelf C")
+
+# ------------------------
 
 def init():
     for line in robot_lines:
@@ -154,49 +182,34 @@ def animate(frame_idx):
     trace_line.set_3d_properties(trace_z)
 
     # --- 2. Update Box Logic ---
-    # Determine which segment of the motion we are in
-    # Segments:
-    # 0: Home -> A (Move Box 1)
-    # 1: A -> Home (Leave Box 1)
-    # 2: Home -> B (Move Box 2)
-    # 3: B -> Home (Leave Box 2)
-    # 4: Home -> C (Move Box 3)
-    # 5: C -> Home (Leave Box 3)
-    
     segment = frame_idx // steps_per_move
-    if segment >= 6: segment = 5 # Clamp end state
+    if segment >= 6: segment = 5 
 
     # --- Box 1 Logic ---
     if segment == 0:
-        # Carrying Box 1
-        b1_current = tip_pos
+        b1_current = tip_pos # Carrying
     else:
-        # Box 1 is dropped at A
-        b1_current = targets['A']
+        b1_current = targets['A'] # Dropped
     
     # --- Box 2 Logic ---
     b2_visible = True
     if segment < 2:
-        b2_visible = False # Not appeared yet
+        b2_visible = False 
         b2_current = targets['Home']
     elif segment == 2:
-        # Carrying Box 2
-        b2_current = tip_pos
+        b2_current = tip_pos # Carrying
     else:
-        # Box 2 is dropped at B
-        b2_current = targets['B']
+        b2_current = targets['B'] # Dropped
 
     # --- Box 3 Logic ---
     b3_visible = True
     if segment < 4:
-        b3_visible = False # Not appeared yet
+        b3_visible = False 
         b3_current = targets['Home']
     elif segment == 4:
-        # Carrying Box 3
-        b3_current = tip_pos
+        b3_current = tip_pos # Carrying
     else:
-        # Box 3 is dropped at C
-        b3_current = targets['C']
+        b3_current = targets['C'] # Dropped
 
     # Update Box Plots
     box1_plot.set_data([b1_current[0]], [b1_current[1]])
@@ -216,9 +229,8 @@ def animate(frame_idx):
         box3_plot.set_data([], [])
         box3_plot.set_3d_properties([])
 
-    # Title info
     stage_text = sequence[segment+1] if segment+1 < len(sequence) else "Done"
-    ax.set_title(f"Moving to {stage_text} | Pitch: {np.degrees(q[2]):.1f}°")
+    ax.set_title(f"Placing on Shelves | Next: {stage_text}")
     
     return robot_lines + [trace_line, box1_plot, box2_plot, box3_plot]
 
@@ -230,12 +242,6 @@ ax.set_xlabel('X')
 ax.set_ylabel('Y')
 ax.set_zlabel('Z')
 
-# Static Markers for targets
-for name, pos in targets.items():
-    ax.scatter(*pos, s=50, marker='x', color='black', alpha=0.5)
-    ax.text(pos[0], pos[1], pos[2], f" {name}", fontsize=9)
-
-# Legend
 ax.legend(loc='upper left', fontsize='small')
 
 # Ground

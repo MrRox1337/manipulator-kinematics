@@ -244,13 +244,22 @@ def animate(frame_idx):
         robot_lines[j].set_color(link_colors[j])
         
     # Update End-effector Trace
-    history_x.append(tip_pos[0])
-    history_y.append(tip_pos[1])
-    history_z.append(tip_pos[2])
-    trace_line.set_data(history_x, history_y)
-    trace_line.set_3d_properties(history_z)
+    trace_x.append(tip_pos[0])
+    trace_y.append(tip_pos[1])
+    trace_z.append(tip_pos[2])
+    trace_line.set_data(trace_x, trace_y)
+    trace_line.set_3d_properties(trace_z)
 
     # --- 2. Update Box Logic (Simulating Pick and Place) ---
+    # Determine which segment of the motion we are in
+    # Segments:
+    # 0: Home -> A (Move Box 1)
+    # 1: A -> Home (Leave Box 1)
+    # 2: Home -> B (Move Box 2)
+    # 3: B -> Home (Leave Box 2)
+    # 4: Home -> C (Move Box 3)
+    # 5: C -> Home (Leave Box 3)
+  
     segment = frame_idx // steps_per_move
     if segment >= 6: segment = 5 # Clamp to the final state
 

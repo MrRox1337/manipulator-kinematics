@@ -168,6 +168,7 @@ ax = fig.add_subplot(111, projection='3d')
 # --- Plot Elements Initialization ---
 robot_lines = [ax.plot([], [], [], lw=4, marker='o', solid_capstyle='round')[0] for _ in range(4)]
 trace_line, = ax.plot([], [], [], 'k-', lw=1, alpha=0.3, label='Tip Path')
+frame_quivers = [] # Store quiver artists for axes
 
 # Box Visuals (Markers representing the payloads)
 box1_plot, = ax.plot([], [], [], linestyle='None', marker='s', markersize=10, color='red', label='Box 1 (-> A)')
@@ -203,6 +204,29 @@ def draw_plate(ax, center, size, color, label=None):
     if label:
         ax.text(x_c, y_c, z_c, label, fontsize=9, fontweight='bold', ha='center')
 
+def draw_frame_axes(ax, T, length=0.5):
+    """
+    Draws RGB arrows representing the X, Y, Z axes of the transformation matrix T.
+    Red = X, Green = Y, Blue = Z
+    """
+    origin = T[:3, 3]
+    R = T[:3, :3]
+    
+    # Draw Quivers
+    # X axis (Red)
+    qx = ax.quiver(origin[0], origin[1], origin[2], 
+                   R[0, 0], R[1, 0], R[2, 0], 
+                   color='r', length=length, normalize=True)
+    # Y axis (Green)
+    qy = ax.quiver(origin[0], origin[1], origin[2], 
+                   R[0, 1], R[1, 1], R[2, 1], 
+                   color='g', length=length, normalize=True)
+    # Z axis (Blue)
+    qz = ax.quiver(origin[0], origin[1], origin[2], 
+                   R[0, 2], R[1, 2], R[2, 2], 
+                   color='b', length=length, normalize=True)
+    return [qx, qy, qz]
+
 # Draw Table (Home position is on the floor)
 draw_plate(ax, targets['Home'], (1.5, 1.5), 'peru', "Table")
 
@@ -230,9 +254,17 @@ trace_x, trace_y, trace_z = [], [], []
 
 def animate(frame_idx):
     """Updates the robot state and box positions for each frame."""
+    global frame_quivers
+    
+    # Clear previous axes arrows
+    for q in frame_quivers:
+        q.remove()
+    frame_quivers = []
+
     q = full_trajectory_q[frame_idx]
     
     # --- 1. Update Robot ---
+    # Get all frames: Base, J2, J3, J4, Tip
     frames = forward_kinematics(q, return_all=True)
     coords = np.array([f[:3, 3] for f in frames]) # (5, 3) matrix of joint coordinates
     tip_pos = coords[-1]
@@ -249,17 +281,13 @@ def animate(frame_idx):
     trace_z.append(tip_pos[2])
     trace_line.set_data(trace_x, trace_y)
     trace_line.set_3d_properties(trace_z)
+    
+    # Draw Axes for each joint
+    for T in frames:
+        axes = draw_frame_axes(ax, T, length=0.6)
+        frame_quivers.extend(axes)
 
     # --- 2. Update Box Logic (Simulating Pick and Place) ---
-    # Determine which segment of the motion we are in
-    # Segments:
-    # 0: Home -> A (Move Box 1)
-    # 1: A -> Home (Leave Box 1)
-    # 2: Home -> B (Move Box 2)
-    # 3: B -> Home (Leave Box 2)
-    # 4: Home -> C (Move Box 3)
-    # 5: C -> Home (Leave Box 3)
-  
     segment = frame_idx // steps_per_move
     if segment >= 6: segment = 5 # Clamp to the final state
 
@@ -311,7 +339,7 @@ def animate(frame_idx):
     stage_text = sequence[segment+1] if segment+1 < len(sequence) else "Task Complete"
     ax.set_title(f"Pick and Place | Next Destination: {stage_text}")
     
-    return robot_lines + [trace_line, box1_plot, box2_plot, box3_plot]
+    return robot_lines + [trace_line, box1_plot, box2_plot, box3_plot] + frame_quivers
 
 # Scene Setup
 ax.set_xlim(-2, 7)

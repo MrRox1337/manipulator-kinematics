@@ -342,8 +342,8 @@ ani = FuncAnimation(fig, animate, frames=total_frames, init_func=init, interval=
 # --- GIF Generation ---
 # To create the GIF, uncomment the lines below and run the script.
 # Requires 'pillow' package (pip install pillow)
-print("Saving GIF... (This may take a minute)")
-ani.save('prrr_manipulator.gif', writer='pillow', fps=20)
-print("GIF saved as 'prrr_manipulator.gif'")
+# print("Saving GIF... (This may take a minute)")
+# ani.save('images/prrr_manipulator.gif', writer='pillow', fps=20)
+# print("GIF saved as 'images/prrr_manipulator.gif'")
 
 plt.show()

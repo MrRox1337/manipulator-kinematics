@@ -42,10 +42,12 @@ The robot uses the Denavit-Hartenberg (DH) convention.
 
 ## Usage
 
+The main script is located in the `main` folder under the name `kinematics_prrr.py`
+
 Run the script using Python:
 
 ```bash
-python prrr_robot_envelope.py
+python kinematics_prrr.py
 ```
 
 ## Dependencies

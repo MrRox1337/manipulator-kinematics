@@ -15,10 +15,10 @@ The robot uses the Denavit-Hartenberg (DH) convention.
 
 ### Configuration
 
--   **Joint 1 (Prismatic):** Vertical Lift ($d_1$)
--   **Joint 2 (Revolute):** Turret Rotation ($\theta_2$)
--   **Joint 3 (Revolute):** Shoulder Pitch ($\theta_3$)
--   **Joint 4 (Revolute):** Elbow/Wrist Pitch ($\theta_4$)
+- **Joint 1 (Prismatic):** Vertical Lift ($d_1$)
+- **Joint 2 (Revolute):** Turret Rotation ($\theta_2$)
+- **Joint 3 (Revolute):** Shoulder Pitch ($\theta_3$)
+- **Joint 4 (Revolute):** Elbow/Wrist Pitch ($\theta_4$)
 
 ### DH Table
 
@@ -32,13 +32,13 @@ The robot uses the Denavit-Hartenberg (DH) convention.
 ## Features
 
 1. **Inverse Kinematics (IK) Solver:** - Uses numerical optimization (`scipy.optimize.minimize`) to solve for joint angles given a target $(x, y, z)$.
-    - **Why Minimize?** Numerical optimization was chosen over analytical methods (closed-form equations) because it offers greater flexibility. Instead of deriving complex geometric formulas for each joint, we define a 'cost function' that represents the error between the robot's current position and the target. The solver iteratively adjusts the joints to minimize this error to zero. This approach also allows us to easily inject constraints—like preventing the arm from hitting the floor—simply by adding penalties to the cost function, which would be very difficult to implement mathematically in a standard analytical solution.
-    - **Floor Constraints:** Penalizes solutions where any joint dips below the ground plane ($z < 0$).
+   - **Why Minimize?** Numerical optimization was chosen over analytical methods (closed-form equations) because it offers greater flexibility. Instead of deriving complex geometric formulas for each joint, we define a 'cost function' that represents the error between the robot's current position and the target. The solver iteratively adjusts the joints to minimize this error to zero. This approach also allows us to easily inject constraints—like preventing the arm from hitting the floor—simply by adding penalties to the cost function, which would be very difficult to implement mathematically in a standard analytical solution.
+   - **Floor Constraints:** Penalizes solutions where any joint dips below the ground plane ($z < 0$).
 2. **Reachability Validation:** - Automatically checks if a target is reachable before attempting movement.
-    - Skips targets outside the workspace to prevent solver errors.
+   - Skips targets outside the workspace to prevent solver errors.
 3. **Interactive Visualization:**
-    - 3D animation of the robot and boxes.
-    - **Checkbox:** Toggle the visualization of the "Working Envelope" (blue wireframe dome).
+   - 3D animation of the robot and boxes.
+   - **Checkbox:** Toggle the visualization of the "Working Envelope" (blue wireframe dome).
 
 ## Usage
 
@@ -50,11 +50,13 @@ python prrr_robot_envelope.py
 
 ## Dependencies
 
--   `numpy`
--   `matplotlib`
--   `scipy`
+- `numpy`
+- `matplotlib`
+- `scipy`
 
 ## Demos
+
+![Video Demonstration with explanation](https://youtu.be/3nWi6zWwKiI)
 
 ### 1. Standard Operation
 

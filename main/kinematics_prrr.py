@@ -1,6 +1,7 @@
 # Name: Aman Mishra
+# MISIS: M00983641
 # Module: PDE 4431 Robot Manipulation
-# Task: Coursework 2 (Updated)
+# Task: Coursework 2
 # Description: 4-DOF PRRR Robot with IK Validation and Conditional Logic.
 #
 # Configuration: PRRR (Prismatic Base, 3x Revolute Arm)
@@ -49,7 +50,7 @@ SCENE_CONFIG = {
         'Home': np.array([4.0, 0.0, 0.5]),
         'A':    np.array([1.0, 3.0, 1.5]),
         'B':    np.array([1.0, 3.0, 2.5]),
-        'C':    np.array([1.0, 3.0, 5.5])  # High shelf
+        'C':    np.array([1.0, 3.0, 10.5])  # High shelf
     },
     # Order of operations
     'sequence': ['Home', 'A', 'Home', 'B', 'Home', 'C', 'Home'],

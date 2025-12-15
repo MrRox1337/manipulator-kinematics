@@ -58,7 +58,7 @@ python kinematics_prrr.py
 
 ## Demos
 
-![Video Demonstration with explanation](https://youtu.be/3nWi6zWwKiI)
+[![Video Demonstration with explanation (5:41)](https://img.youtube.com/vi/3nWi6zWwKiI/hqdefault.jpg)](https://youtu.be/3nWi6zWwKiI)
 
 ### 1. Standard Operation
 
